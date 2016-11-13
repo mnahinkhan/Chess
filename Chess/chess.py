@@ -331,16 +331,22 @@ def isCheck(board,color):
     #specified color is under attack.
     color = color[0]
     enemy = opp(color)
-    Piece = 'K' + color
-    isFound  = False
-    for row in range(8):
-        for col in range(8):
-            if not isFound and board[row][col] == Piece:
-                x = col
-                y = row
+    piece = 'K' + color
+    x,y = lookfor(board,piece)[0]
 
     return isAttackedby(board,x,y,enemy)
 
+def lookfor(board,piece):
+    #This function looks for a speecified piece on the board and returns a list of all its
+    #coordinates
+    listofLocations = []
+    for row in range(8):
+        for col in range(8):
+            if board[row][col] == piece:
+                x = col
+                y = row
+                listofLocations.append((x,y))
+    return listofLocations
 def makemove(board,state_info,x,y,x2,y2):
     #This function makes a move on the board and
     #returns the resultant board and game state.
@@ -416,9 +422,9 @@ def makemove(board,state_info,x,y,x2,y2):
 
 class Piece:
     def __init__(self,pieceinfo,chess_coord):
-        global pieces_image
-        global size_of_a_piece
-        size = size_of_a_piece
+        #global pieces_image
+        #global size_of_a_piece
+        size = (square_width,square_height)
         color = pieceinfo[1]
         piece = pieceinfo[0]
         if piece=='K':
@@ -469,38 +475,78 @@ class Shades:
     def __init__(self,image,coord):
         self.image = image
         self.pos = coord
-    def getPos(self):
-        return self.pos
+    def getInfo(self):
+        return [self.image,self.pos]
 def drawBoard():
     screen.blit(background,(0,0))
-    for piece in listofPieces:
+    if player==1:
+        order = [listofWhitePieces,listofBlackPieces]
+    else:
+        order = [listofBlackPieces,listofWhitePieces]
+    #Pieces
+    for piece in order[0]:
         chess_coord,subsection,pos = piece.getInfo()
         pixel_coord = chess_coord_to_pixels(chess_coord)
         if pos==(-1,-1):
             screen.blit(pieces_image,pixel_coord,subsection)
         else:
             screen.blit(pieces_image,pos,subsection)
+    #Shades
+    for shade in listofShades:
+        img,chess_coord = shade.getInfo()
+        pixel_coord = chess_coord_to_pixels(chess_coord)
+        screen.blit(img,pixel_coord)
+    #Pieces
+    for piece in order[1]:
+        chess_coord,subsection,pos = piece.getInfo()
+        pixel_coord = chess_coord_to_pixels(chess_coord)
+        if pos==(-1,-1):
+            screen.blit(pieces_image,pixel_coord,subsection)
+        else:
+            screen.blit(pieces_image,pos,subsection)
+    
+    
 
 def getPiece(chess_coord):
-    for piece in listofPieces:
+    for piece in listofWhitePieces+listofBlackPieces:
         if piece.getInfo()[0] == chess_coord:
             return piece
 
 
 def createPieces(board):
-    if player==1:
-        order = 'wb'
-    else:
-        order = 'bw'
-    listofPieces = []
-    for color in order:
-        for i in range(len(board)):
-            for k in range(len(board[i])):
-                if board[i][k]!=0 and board[i][k][1]==color:
-                    p = Piece(board[i][k],(k,i))
-                    listofPieces.append(p)
-    return listofPieces
 
+    listofWhitePieces = []
+    listofBlackPieces = []
+
+    for i in range(len(board)):
+        for k in range(len(board[i])):
+            if board[i][k]!=0:
+                p = Piece(board[i][k],(k,i))
+                if board[i][k][1]=='w':
+                    listofWhitePieces.append(p)
+                else:
+                    listofBlackPieces.append(p)
+    return [listofWhitePieces,listofBlackPieces]
+
+def createShades(listofTuples):
+    global listofShades
+    listofShades = []
+    for tupleq in listofTuples:
+        if isOccupied(board,tupleq[0],tupleq[1]):
+            img = circle_image_capture
+        else:
+            img = circle_image_green
+        shade = Shades(img,tupleq)
+        listofShades.append(shade)
+    if isCheck(board,'white'):
+        coord = lookfor(board,'Kw')[0]
+        shade = Shades(circle_image_red,coord)
+        listofShades.append(shade)
+    if isCheck(board,'black'):
+        coord = lookfor(board,'Kb')[0]
+        shade = Shades(circle_image_red,coord)
+        listofShades.append(shade)
+        
 
 #########MAIN FUNCTION####################################################
 #Initialize the board:
@@ -535,7 +581,10 @@ screen = pygame.display.set_mode((600,600))
 background = pygame.image.load('Media\\board.png').convert()
 #Load an image with all the pieces on it:
 pieces_image = pygame.image.load('Media\\Chess_Pieces_Sprite.png').convert_alpha()
-
+circle_image_green = pygame.image.load('Media\\light_green_circle4.png').convert_alpha()
+circle_image_capture = pygame.image.load('Media\\light_green_circle11.png').convert_alpha()
+circle_image_red = pygame.image.load('Media\\light_red_circle12.png').convert_alpha()
+greenbox_image = pygame.image.load('Media\\dark_green_box.png').convert_alpha()
 #Getting sizes:
 #Get background size:
 size_of_bg = background.get_rect().size
@@ -547,9 +596,17 @@ square_height = size_of_bg[1]/8
 #Rescale the images so that each piece can fit in a square:
 pieces_image = pygame.transform.scale(pieces_image,
                                       (square_width*6,square_height*2))
+circle_image_green = pygame.transform.scale(circle_image_green,
+                                      (square_width, square_height))
+circle_image_capture = pygame.transform.scale(circle_image_capture,
+                                      (square_width, square_height))
+circle_image_red = pygame.transform.scale(circle_image_red,
+                                      (square_width, square_height))
+greenbox_image = pygame.transform.scale(greenbox_image,
+                                      (square_width, square_height))
 #Get final sizes:
-size_of_pcsImg = pieces_image.get_rect().size
-size_of_a_piece = (size_of_pcsImg[0]/6,size_of_pcsImg[1]/2)
+#size_of_pcsImg = pieces_image.get_rect().size
+#size_of_a_piece = (size_of_pcsImg[0]/6,size_of_pcsImg[1]/2)
 
 
 #Make a window of the same size as the background, set its title, and
@@ -559,9 +616,9 @@ pygame.display.set_caption('Chess')
 screen.blit(background,(0,0))
 
 #Generate a list of pieces that should be drawn on the board:
-listofPieces = createPieces(board)
+listofWhitePieces,listofBlackPieces = createPieces(board)
 #(the list contains references to objects of the class Piece)
-
+listofShades = []
 #Draw the pieces onto the board:
 drawBoard()
 
@@ -580,7 +637,7 @@ while not gameEnded:
         if event.type==QUIT:
             #Window was closed.
             gameEnded = True
-        if event.type == MOUSEBUTTONDOWN:
+        if not isDown and event.type == MOUSEBUTTONDOWN:
             #Mouse was pressed down.
             #Get the oordinates of the mouse
             pos = pygame.mouse.get_pos()
@@ -592,9 +649,11 @@ while not gameEnded:
                 continue
             dragPiece = getPiece(chess_coord)
             listofTuples = findPossibleSquares(board,x,y,state_info)
-            #highlight(listofTuples)
+            createShades(listofTuples)
+            listofShades.append(Shades(greenbox_image,(x,y)))
             isDown = True       
         if isDown and event.type == MOUSEBUTTONUP:
+            createShades([])
             #Mouse was released.
             isDown = False
             dragPiece.setpos((-1,-1))
@@ -607,7 +666,8 @@ while not gameEnded:
             [board,state_info] = makemove(board,state_info,x,y,x2,y2)
             dragPiece.setcoord((x2,y2))
             player = state_info[0]
-            listofPieces = createPieces(board)
+            listofWhitePieces,listofBlackPieces = createPieces(board)
+            createShades([])
 
     if isDown:
         #Mouse is held down and a pie
