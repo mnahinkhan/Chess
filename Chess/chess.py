@@ -5,7 +5,7 @@
 #    File Created: 07/11/2016
 #    Modification History:
 #    Start             End
-#    07/11 12:52       30/10 13:20
+#    07/11 12:52       07/11 13:20
 #    07/11 18:00       07/11 21:06
 #    09/11 03:13       09/11 05:49
 #    09/11 15:38       09/11 16:19
@@ -13,6 +13,8 @@
 #    10/11 20:17       10/11 21:34
 #    11/11 23:50       12/11 05:19
 #    13/11 00:01       13/11 01:34
+#    15/11 16:19       15/11 17:00
+#    16/11 01:00       16/11 01:49
 #
 #
 # This program is a chess game. 
@@ -259,44 +261,7 @@ def findPossibleSquares(board,x,y,state_info,AttackSearch=False):
             not isAttackedby(board,x-1,y,enemy_color,state_info) and #Or the path through which
             not isAttackedby(board,x-2,y,enemy_color,state_info)):#it will move
                 listofTuples.append((x-2,y)) #Let castling be an option.
-##            if color=='w':
-##                right = castling_rights[0]
-##                #Kingside
-##                if (right and #White has right to castle
-##                not isOccupied(board,x+1,y) and #The square on its right is empty
-##                not isOccupied(board,x+2,y) and #The second square beyond is also empty
-##                not isAttackedby(board,x,y,'b',state_info) and #The king isn't under atack
-##                not isAttackedby(board,x+1,y,'b',state_info) and #Or the path through which
-##                not isAttackedby(board,x+2,y,'b',state_info)):#it will move
-##                    listofTuples.append((x+2,y))
-##                #Queenside
-##                if (right and #White has right to castle
-##                not isOccupied(board,x-1,y)and #The square on its left is empty
-##                not isOccupied(board,x-2,y)and #The second square beyond is also empty
-##                not isOccupied(board,x-3,y) and #And the one beyond.
-##                not isAttackedby(board,x,y,'b',state_info) and #The king isn't under atack
-##                not isAttackedby(board,x-1,y,'b',state_info) and #Or the path through which
-##                not isAttackedby(board,x-2,y,'b',state_info)):#it will move
-##                    listofTuples.append((x-2,y)) #Let castling be an option.
-##            else:
-##                right = castling_rights[1]
-##                #kingside
-##                if (right and #Black has right to castle
-##                not isOccupied(board,x-1,y)and #The square on its right is empty
-##                not isOccupied(board,x-2,y) and #The second square beyond is also empty
-##                not isAttackedby(board,x,y,'w',state_info) and #The king isn't under atack
-##                not isAttackedby(board,x-1,y,'w',state_info) and #Or the path through which
-##                not isAttackedby(board,x-2,y,'w',state_info)):#it will move
-##                    listofTuples.append((x-2,y)) #Let castling be an option
-##                #Queenside
-##                if (right and #Black has right to castle
-##                not isOccupied(board,x+1,y)and #The square on its left is empty
-##                not isOccupied(board,x+2,y)and #The second square beyond is also empty
-##                not isOccupied(board,x+3,y)and #And the one beyond.
-##                not isAttackedby(board,x,y,'w',state_info) and #The king isn't under atack
-##                not isAttackedby(board,x+1,y,'w',state_info) and #Or the path through which
-##                not isAttackedby(board,x+2,y,'w',state_info)):#it will move
-##                    listofTuples.append((x+2,y)) #Let castling be an option.
+
 ##            refinedlist = []
 ##            for tupleq in listofTuples:
 ##                px = tupleq[0]
@@ -404,7 +369,8 @@ def makemove(board,state_info,x,y,x2,y2):
             board[y2][x2] = 'Qw'
         elif y2 == 7:
             board[y2][x2] = 'Qb'
-
+    else:
+        EnP_Target = -1
 
     #Update aspects of state_info:
     #Since a move has been made, the other player
@@ -455,6 +421,8 @@ class Piece:
         return [self.chess_coord, self.subsection,self.pos]
     def setpos(self,pos):
         self.pos = pos
+    def getpos(self):
+        return self.pos
     def setcoord(self,coord):
         self.chess_coord = coord
     def __repr__(self):
@@ -483,8 +451,11 @@ def drawBoard():
         order = [listofWhitePieces,listofBlackPieces]
     else:
         order = [listofBlackPieces,listofWhitePieces]
+    if isTransition:
+        order = list(reversed(order))
     #Pieces
     for piece in order[0]:
+        
         chess_coord,subsection,pos = piece.getInfo()
         pixel_coord = chess_coord_to_pixels(chess_coord)
         if pos==(-1,-1):
@@ -512,6 +483,12 @@ def getPiece(chess_coord):
         if piece.getInfo()[0] == chess_coord:
             return piece
 
+def getPiece2(pieceinfo):
+    l = []
+    for piece in listofWhitePieces+listofBlackPieces:
+        if piece.pieceinfo == pieceinfo:
+            l.append(piece)
+    return l
 
 def createPieces(board):
 
@@ -531,6 +508,8 @@ def createPieces(board):
 def createShades(listofTuples):
     global listofShades
     listofShades = []
+    if isTransition:
+        return
     for tupleq in listofTuples:
         if isOccupied(board,tupleq[0],tupleq[1]):
             img = circle_image_capture
@@ -619,21 +598,28 @@ screen.blit(background,(0,0))
 listofWhitePieces,listofBlackPieces = createPieces(board)
 #(the list contains references to objects of the class Piece)
 listofShades = []
-#Draw the pieces onto the board:
-drawBoard()
+
 
 
 clock = pygame.time.Clock() #Helps controlling fps of the game.
 isDown = False #Variable that shows if the mouse is being held down
                #onto a piece 
-
-
+isClicked = False
+isTransition = False
+movingPiece=0
+#Draw the pieces onto the board:
+drawBoard()
 ######INFINITE LOOP##########################################
 #Allow loop to continue till game ends
 gameEnded = False
 while not gameEnded:
+    #print isDown
     #Check for user inputs:
+    #print isDown
     for event in pygame.event.get():
+        if isTransition:
+            #print 'continuing'
+            continue
         if event.type==QUIT:
             #Window was closed.
             gameEnded = True
@@ -645,29 +631,100 @@ while not gameEnded:
             chess_coord = pixel_coord_to_chess(pos)
             x = chess_coord[0]
             y = chess_coord[1]
+            print "I' here"
             if not isOccupiedby(board,x,y,'wb'[player]):
+                print "But not here"
                 continue
             dragPiece = getPiece(chess_coord)
             listofTuples = findPossibleSquares(board,x,y,state_info)
             createShades(listofTuples)
-            listofShades.append(Shades(greenbox_image,(x,y)))
+            if ((dragPiece.pieceinfo[0]=='K') and
+                (isCheck(board,'white') or isCheck(board,'black'))):
+                None
+            else:
+                listofShades.append(Shades(greenbox_image,(x,y)))
             isDown = True       
-        if isDown and event.type == MOUSEBUTTONUP:
-            createShades([])
+        if (isDown or isClicked) and event.type == MOUSEBUTTONUP:
             #Mouse was released.
             isDown = False
+            #Snap the piece back to its coordinate position
+            #if not isTransition or not dragPiece==movingPiece:
             dragPiece.setpos((-1,-1))
+            
             pos = pygame.mouse.get_pos()
             chess_coord = pixel_coord_to_chess(pos)
             x2 = chess_coord[0]
             y2 = chess_coord[1]
+            isTransition = False
+            if (x,y)==(x2,y2): #NO dragging occured
+                #print 'alpha'
+                if not isClicked: #nothing had been clicked
+                    isClicked = True
+                    prevPos = (x,y) #Store it so next time we know the origin
+                else: #Something had been clicked previously
+                    x,y = prevPos
+                    if (x,y)==(x2,y2): #User clicked on the same square again.
+                        #So 
+                        isClicked = False
+                        createShades([])
+                    else:
+                        #User clicked elsewhere:
+                        if isOccupiedby(board,x2,y2,'wb'[player]):
+                            #User clicked on a square that is our own.
+                            isClicked = True
+                            prevPos = (x2,y2) #Store it
+                        else:
+                            isClicked = False
+                            isTransition = True #Possibly
+
             if not (x2,y2) in listofTuples:
+                isTransition = False
+                #createShades([])
+                print 'skipped'
                 continue
-            [board,state_info] = makemove(board,state_info,x,y,x2,y2)
-            dragPiece.setcoord((x2,y2))
+            
+            try:
+                [board,state_info] = makemove(board,state_info,x,y,x2,y2)
+            except:
+                print "WTF!!!!!!!"
+                print x,y
+                print "^THOSE WERE X AND Y COORDINATES BTW"
+                raise SystemExit,0
             player = state_info[0]
-            listofWhitePieces,listofBlackPieces = createPieces(board)
+            dragPiece.setcoord((x2,y2))
+            if not isTransition:
+                listofWhitePieces,listofBlackPieces = createPieces(board)
+            else:
+                print 'In transition!!'
+                movingPiece = dragPiece
+                origin = chess_coord_to_pixels((x,y))
+                destiny = chess_coord_to_pixels((x2,y2))
+                movingPiece.setpos(origin)
+                step = (destiny[0]-origin[0],destiny[1]-origin[1])
+                print 'step  = ',step
+            
+            
             createShades([])
+            #drawText(board)
+    if isTransition and movingPiece!=0:
+        p,q = movingPiece.getpos()
+        dx2,dy2 = destiny
+        #print p,dx2,'above'
+        #print origin,destiny,step
+        n= 30.0
+        if abs(p-dx2)<=abs(step[0]/n) and abs(q-dy2)<=abs(step[1]/n):
+##            print p,q,dx2,dy2,'middle'
+            movingPiece.setpos((-1,-1))
+            listofWhitePieces,listofBlackPieces = createPieces(board)
+            isTransition = False
+            createShades([])
+        else:
+##            print p,q,dx2,dy2,'below'
+##            print abs(p-dx2)
+##            print abs(step[0]/n)
+##            print abs(q-dy2)
+##            print abs(step[1]/n)
+            movingPiece.setpos((p+step[0]/n,q+step[1]/n))
 
     if isDown:
         #Mouse is held down and a pie
