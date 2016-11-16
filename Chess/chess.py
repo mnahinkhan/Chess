@@ -25,6 +25,7 @@
 #in this program.
 import pygame
 from pygame.locals import *
+import copy
 def drawText(board):
     for i in range(len(board)):
         for k in range(len(board[i])):
@@ -70,21 +71,27 @@ def filterbyColor(board,listofTuples,color):
             #coordinates are on-board and no same-color piece is on the square.
             real_list.append(tupleq)
     return real_list
-def isAttackedby(board,spec_x,spec_y,color,state_info=-1):
+def isAttackedby(position,spec_x,spec_y,color):
     #This function checks if the square specified by (x,y) coordinate is being
     #attacked by any of a specific colored set of pieces
+    board = position.getboard()
     color = color[0]
     listofAttackedSquares = []
     for x in range(8):
         for y in range(8):
             if board[y][x]!=0 and board[y][x][1]==color:
                 listofAttackedSquares.extend(
-                    findPossibleSquares(board,x,y,state_info,True))
+                    findPossibleSquares(position,x,y,True))
     return (spec_x,spec_y) in listofAttackedSquares             
-def findPossibleSquares(board,x,y,state_info,AttackSearch=False):
+def findPossibleSquares(position,x,y,AttackSearch=False):
     #This function takes as its input the current state of the chessboard, and
     #a particular x and y coordinate. It will return for the piece on that board
     #a list of possible coordinates it could move to.
+    board = position.getboard()
+    player = position.getplayer()
+    castling_rights = position.getCastleRights()
+    EnP_Target = position.getEnP()
+    HMC = position.getHMC()
     if len(board[y][x])!=2: #Unexpected, return empty list.
         return [] 
     piece = board[y][x][0] #Pawn, rook, etc.
@@ -92,13 +99,12 @@ def findPossibleSquares(board,x,y,state_info,AttackSearch=False):
     #Have the complimentary color stored for convenience:
     enemy_color = opp(color)
     
-    if state_info == -1:
-        state_info = [0,[False,False],-1,0]
+    #if state_info == -1:
+    #    state_info = [0,[False,False],-1,0]
     
     listofTuples = [] #Holds list
     
     if piece == 'P': #The piece is a pawn.
-        En_P_Target = state_info[2] #Possible en-passant target
         if color=='w': #The piece is white
             if not isOccupied(board,x,y-1) and not AttackSearch:
                 #The piece immediately above is not occupied, append it.
@@ -116,11 +122,11 @@ def findPossibleSquares(board,x,y,state_info,AttackSearch=False):
                 #The piece diagonally up and right of this pawn is a black one.
                 #Also, this is not an 'h' file pawn.
                 listofTuples.append((x+1,y-1))
-            if En_P_Target!=-1: #There is a possible en pasant target:
-                if En_P_Target == (x-1,y-1) or En_P_Target == (x+1,y-1):
+            if EnP_Target!=-1: #There is a possible en pasant target:
+                if EnP_Target == (x-1,y-1) or EnP_Target == (x+1,y-1):
                     #We're at the correct location to potentially perform en
                     #passant:
-                    listofTuples.append(En_P_Target)
+                    listofTuples.append(EnP_Target)
             
         elif color=='b': #The piece is black, same as above but opposite side.
             if not isOccupied(board,x,y+1) and not AttackSearch:
@@ -131,8 +137,8 @@ def findPossibleSquares(board,x,y,state_info,AttackSearch=False):
                 listofTuples.append((x-1,y+1))
             if x!=7 and isOccupiedby(board,x+1,y+1,'white'):
                 listofTuples.append((x+1,y+1))
-            if En_P_Target == (x-1,y+1) or En_P_Target == (x+1,y+1):
-                listofTuples.append(En_P_Target)
+            if EnP_Target == (x-1,y+1) or EnP_Target == (x+1,y+1):
+                listofTuples.append(EnP_Target)
 
     elif piece == 'R': #The piece is a rook.
         #Get all the horizontal squares:
@@ -224,10 +230,10 @@ def findPossibleSquares(board,x,y,state_info,AttackSearch=False):
         #a bishop could have made from the same location
         #Temporarily pretend there is a rook on the spot:
         board[y][x] = 'R' + color
-        list_rook = findPossibleSquares(board,x,y,state_info,True)
+        list_rook = findPossibleSquares(position,x,y,True)
         #Temporarily pretend there is a bishop:
         board[y][x] = 'B' + color
-        list_bishop = findPossibleSquares(board,x,y,state_info,True)
+        list_bishop = findPossibleSquares(position,x,y,True)
         #Merge the lists:
         listofTuples = list_rook + list_bishop
         #Change the piece back to a queen:
@@ -240,26 +246,24 @@ def findPossibleSquares(board,x,y,state_info,AttackSearch=False):
         #Make sure the targets aren't our own piece or off-board:
         listofTuples = filterbyColor(board,listofTuples,color)
         if not AttackSearch:
-            player = state_info[0]
             #Kings can potentially castle:
-            castling_rights = state_info[1]
             right = castling_rights[player]
             #Kingside
             if (right and #White has right to castle
             not isOccupied(board,x+1,y) and #The square on its right is empty
             not isOccupied(board,x+2,y) and #The second square beyond is also empty
-            not isAttackedby(board,x,y,enemy_color,state_info) and #The king isn't under atack
-            not isAttackedby(board,x+1,y,enemy_color,state_info) and #Or the path through which
-            not isAttackedby(board,x+2,y,enemy_color,state_info)):#it will move
+            not isAttackedby(position,x,y,enemy_color) and #The king isn't under atack
+            not isAttackedby(position,x+1,y,enemy_color) and #Or the path through which
+            not isAttackedby(position,x+2,y,enemy_color)):#it will move
                 listofTuples.append((x+2,y))
             #Queenside
             if (right and #White has right to castle
             not isOccupied(board,x-1,y)and #The square on its left is empty
             not isOccupied(board,x-2,y)and #The second square beyond is also empty
             not isOccupied(board,x-3,y) and #And the one beyond.
-            not isAttackedby(board,x,y,enemy_color,state_info) and #The king isn't under atack
-            not isAttackedby(board,x-1,y,enemy_color,state_info) and #Or the path through which
-            not isAttackedby(board,x-2,y,enemy_color,state_info)):#it will move
+            not isAttackedby(position,x,y,enemy_color) and #The king isn't under atack
+            not isAttackedby(position,x-1,y,enemy_color) and #Or the path through which
+            not isAttackedby(position,x-2,y,enemy_color)):#it will move
                 listofTuples.append((x-2,y)) #Let castling be an option.
 
 ##            refinedlist = []
@@ -274,57 +278,33 @@ def findPossibleSquares(board,x,y,state_info,AttackSearch=False):
     if not AttackSearch:
         new_list = []
         for tupleq in listofTuples:
+            #print 'loop'
+            #print tupleq
             x2 = tupleq[0]
             y2 = tupleq[1]
-            temp_board = [row[:] for row in board]
-            #temp_state = [state_info[i] for i in range(len(state_info))]
-            temp_board = makemove(temp_board,-1,x,y,
-                             x2,y2)[0]
-            if not isCheck(temp_board,color):
+            temp_pos = GamePosition(copy.deepcopy(board),player,
+                                    copy.copy(castling_rights),EnP_Target,HMC)
+            makemove(temp_pos,x,y,x2,y2)
+            if not isCheck(temp_pos,color):
                 new_list.append(tupleq)
         listofTuples = new_list
     return listofTuples
-def opp(color):
-    color = color[0]
-    if color == 'w':
-        oppcolor = 'b'
-    else:
-        oppcolor = 'w'
-    return oppcolor
-def isCheck(board,color):
-    #This function takes a board as its input and checks if the King of the
-    #specified color is under attack.
-    color = color[0]
-    enemy = opp(color)
-    piece = 'K' + color
-    x,y = lookfor(board,piece)[0]
 
-    return isAttackedby(board,x,y,enemy)
-
-def lookfor(board,piece):
-    #This function looks for a speecified piece on the board and returns a list of all its
-    #coordinates
-    listofLocations = []
-    for row in range(8):
-        for col in range(8):
-            if board[row][col] == piece:
-                x = col
-                y = row
-                listofLocations.append((x,y))
-    return listofLocations
-def makemove(board,state_info,x,y,x2,y2):
+def makemove(position,x,y,x2,y2):
     #This function makes a move on the board and
     #returns the resultant board and game state.
     #Get piece and color of the one being moved:
-    if state_info == -1:
-        state_info = [0,[False,False],-1,0]
+    #if state_info == -1:
+    #    state_info = [0,[False,False],-1,0]
+    board = position.getboard()
+    #drawText(board)
     piece = board[y][x][0]
     color = board[y][x][1]
     #Get the individual game components:
-    player = state_info[0]
-    castling_rights = state_info[1]
-    EnP_Target = state_info[2]
-    half_move_clock = state_info[3]
+    player = position.getplayer()
+    castling_rights = position.getCastleRights()
+    EnP_Target = position.getEnP()
+    half_move_clock = position.getHMC()
 
     #Make the move:
     board[y2][x2] = board[y][x]
@@ -380,54 +360,42 @@ def makemove(board,state_info,x,y,x2,y2):
     half_move_clock = half_move_clock + 1
     
     #Pack it back into one variable:       
-    state_info = [ player, castling_rights,
-                   EnP_Target, half_move_clock]
-    
-    return [board,state_info]
-    
+    position.setplayer(player)
+    position.setCastleRights(castling_rights)
+    position.setEnP(EnP_Target)
+    position.setHMC(half_move_clock)
 
-class Piece:
-    def __init__(self,pieceinfo,chess_coord):
-        #global pieces_image
-        #global size_of_a_piece
-        size = (square_width,square_height)
-        color = pieceinfo[1]
-        piece = pieceinfo[0]
-        if piece=='K':
-            left_x = 0
-        else:
-            if piece=='Q':
-                index = 1
-            elif piece=='B':
-                index = 2
-            elif piece == 'N':
-                index = 3
-            elif piece == 'R':
-                index = 4
-            elif piece == 'P':
-                index = 5
-            left_x = size[0]*index
-        if color == 'w':
-            left_y = 0
-        else:
-            left_y = size[1]
-        
-        self.pieceinfo = pieceinfo
-        self.subsection = (left_x,left_y,size[0],size[1])
-        self.chess_coord = chess_coord
-        self.pos = (-1,-1)
+def opp(color):
+    color = color[0]
+    if color == 'w':
+        oppcolor = 'b'
+    else:
+        oppcolor = 'w'
+    return oppcolor
+def isCheck(position,color):
+    #This function takes a board as its input and checks if the King of the
+    #specified color is under attack.
+    board = position.getboard()
+    color = color[0]
+    enemy = opp(color)
+    piece = 'K' + color
+    x,y = lookfor(board,piece)[0]
 
-    def getInfo(self):
-        return [self.chess_coord, self.subsection,self.pos]
-    def setpos(self,pos):
-        self.pos = pos
-    def getpos(self):
-        return self.pos
-    def setcoord(self,coord):
-        self.chess_coord = coord
-    def __repr__(self):
-        #useful for debugging
-        return self.pieceinfo+'('+str(chess_coord[0])+','+str(chess_coord[1])+')'
+    return isAttackedby(position,x,y,enemy)
+
+def lookfor(board,piece):
+    #This function looks for a speecified piece on the board and returns a list of all its
+    #coordinates
+    listofLocations = []
+    for row in range(8):
+        for col in range(8):
+            if board[row][col] == piece:
+                x = col
+                y = row
+                listofLocations.append((x,y))
+    return listofLocations
+
+
 def chess_coord_to_pixels(chess_coord):
     #This function takes as input a chess coordinate such as (4,7) and
     #the size of the image of a chess piece. It returns the top left
@@ -439,12 +407,7 @@ def chess_coord_to_pixels(chess_coord):
 def pixel_coord_to_chess(pixel_coord):
     return (pixel_coord[0]/square_width, pixel_coord[1]/square_height)
     
-class Shades:
-    def __init__(self,image,coord):
-        self.image = image
-        self.pos = coord
-    def getInfo(self):
-        return [self.image,self.pos]
+
 def drawBoard():
     screen.blit(background,(0,0))
     if player==1:
@@ -517,15 +480,93 @@ def createShades(listofTuples):
             img = circle_image_green
         shade = Shades(img,tupleq)
         listofShades.append(shade)
-    if isCheck(board,'white'):
+    if isCheck(position,'white'):
         coord = lookfor(board,'Kw')[0]
         shade = Shades(circle_image_red,coord)
         listofShades.append(shade)
-    if isCheck(board,'black'):
+    if isCheck(position,'black'):
         coord = lookfor(board,'Kb')[0]
         shade = Shades(circle_image_red,coord)
         listofShades.append(shade)
+
+##################################
+#Class Definitions:
+class Shades:
+    def __init__(self,image,coord):
+        self.image = image
+        self.pos = coord
+    def getInfo(self):
+        return [self.image,self.pos]
+class Piece:
+    def __init__(self,pieceinfo,chess_coord):
+        #global pieces_image
+        #global size_of_a_piece
+        size = (square_width,square_height)
+        color = pieceinfo[1]
+        piece = pieceinfo[0]
+        if piece=='K':
+            left_x = 0
+        else:
+            if piece=='Q':
+                index = 1
+            elif piece=='B':
+                index = 2
+            elif piece == 'N':
+                index = 3
+            elif piece == 'R':
+                index = 4
+            elif piece == 'P':
+                index = 5
+            left_x = size[0]*index
+        if color == 'w':
+            left_y = 0
+        else:
+            left_y = size[1]
         
+        self.pieceinfo = pieceinfo
+        self.subsection = (left_x,left_y,size[0],size[1])
+        self.chess_coord = chess_coord
+        self.pos = (-1,-1)
+
+    def getInfo(self):
+        return [self.chess_coord, self.subsection,self.pos]
+    def setpos(self,pos):
+        self.pos = pos
+    def getpos(self):
+        return self.pos
+    def setcoord(self,coord):
+        self.chess_coord = coord
+    def __repr__(self):
+        #useful for debugging
+        return self.pieceinfo+'('+str(chess_coord[0])+','+str(chess_coord[1])+')'
+
+class GamePosition:
+    def __init__(self,board,player,castling_rights,EnP_Target,HMC):
+        self.board = board
+        self.player = player
+        self.castling = castling_rights
+        self.EnP = EnP_Target
+        self.HMC = HMC
+    def getboard(self):
+        return self.board
+    def setboard(self,board):
+        self.board = board
+    def getplayer(self):
+        return self.player
+    def setplayer(self,player):
+        self.player = player
+    def getCastleRights(self):
+        return self.castling
+    def setCastleRights(self,castling_rights):
+        self.castling = castling_rights
+    def getEnP(self):
+        return self.EnP
+    def setEnP(self, EnP_Target):
+        self.EnP = EnP_Target
+    def getHMC(self):
+        return self.HMC
+    def setHMC(self,HMC):
+        self.HMC = HMC
 
 #########MAIN FUNCTION####################################################
 #Initialize the board:
@@ -547,8 +588,10 @@ En_Passant_Target = -1 #This variable will store a coordinate if there is a squa
                        #targets. 
 half_move_clock = 0 #This variable stores the number of reversible moves that have been played so far.
 
-state_info = [ player, castling_rights, En_Passant_Target,
-                    half_move_clock] #This variable stores the above data in one variable.
+position = GamePosition(board,player,castling_rights,En_Passant_Target
+                        ,half_move_clock)
+#state_info = [ player, castling_rights, En_Passant_Target,
+                    #half_move_clock] #This variable stores the above data in one variable.
 #Make the GUI:
 #Start pygame
 pygame.init()
@@ -607,6 +650,7 @@ isDown = False #Variable that shows if the mouse is being held down
 isClicked = False
 isTransition = False
 movingPiece=0
+isAI = False
 #Draw the pieces onto the board:
 drawBoard()
 ######INFINITE LOOP##########################################
@@ -631,15 +675,15 @@ while not gameEnded:
             chess_coord = pixel_coord_to_chess(pos)
             x = chess_coord[0]
             y = chess_coord[1]
-            print "I' here"
+            #print "I' here"
             if not isOccupiedby(board,x,y,'wb'[player]):
-                print "But not here"
+                #print "But not here"
                 continue
             dragPiece = getPiece(chess_coord)
-            listofTuples = findPossibleSquares(board,x,y,state_info)
+            listofTuples = findPossibleSquares(position,x,y)
             createShades(listofTuples)
             if ((dragPiece.pieceinfo[0]=='K') and
-                (isCheck(board,'white') or isCheck(board,'black'))):
+                (isCheck(position,'white') or isCheck(position,'black'))):
                 None
             else:
                 listofShades.append(Shades(greenbox_image,(x,y)))
@@ -680,28 +724,30 @@ while not gameEnded:
             if not (x2,y2) in listofTuples:
                 isTransition = False
                 #createShades([])
-                print 'skipped'
+                #print 'skipped'
                 continue
             
             try:
-                [board,state_info] = makemove(board,state_info,x,y,x2,y2)
+                makemove(position,x,y,x2,y2)
             except:
                 print "WTF!!!!!!!"
                 print x,y
                 print "^THOSE WERE X AND Y COORDINATES BTW"
                 raise SystemExit,0
-            player = state_info[0]
+            
+            player = position.getplayer()
+            HMC = position.getHMC()
             dragPiece.setcoord((x2,y2))
             if not isTransition:
                 listofWhitePieces,listofBlackPieces = createPieces(board)
             else:
-                print 'In transition!!'
+                #print 'In transition!!'
                 movingPiece = dragPiece
                 origin = chess_coord_to_pixels((x,y))
                 destiny = chess_coord_to_pixels((x2,y2))
                 movingPiece.setpos(origin)
                 step = (destiny[0]-origin[0],destiny[1]-origin[1])
-                print 'step  = ',step
+                #print 'step  = ',step
             
             
             createShades([])
