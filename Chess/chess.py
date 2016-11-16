@@ -15,6 +15,7 @@
 #    13/11 00:01       13/11 01:34
 #    15/11 16:19       15/11 17:00
 #    16/11 01:00       16/11 01:49
+#    16/11 12:50       16/11 13:31
 #
 #
 # This program is a chess game. 
@@ -88,10 +89,10 @@ def findPossibleSquares(position,x,y,AttackSearch=False):
     #a particular x and y coordinate. It will return for the piece on that board
     #a list of possible coordinates it could move to.
     board = position.getboard()
-    player = position.getplayer()
+    #player = position.getplayer()
     castling_rights = position.getCastleRights()
     EnP_Target = position.getEnP()
-    HMC = position.getHMC()
+    #HMC = position.getHMC()
     if len(board[y][x])!=2: #Unexpected, return empty list.
         return [] 
     piece = board[y][x][0] #Pawn, rook, etc.
@@ -282,8 +283,7 @@ def findPossibleSquares(position,x,y,AttackSearch=False):
             #print tupleq
             x2 = tupleq[0]
             y2 = tupleq[1]
-            temp_pos = GamePosition(copy.deepcopy(board),player,
-                                    copy.copy(castling_rights),EnP_Target,HMC)
+            temp_pos = position.clone()
             makemove(temp_pos,x,y,x2,y2)
             if not isCheck(temp_pos,color):
                 new_list.append(tupleq)
@@ -305,6 +305,12 @@ def makemove(position,x,y,x2,y2):
     castling_rights = position.getCastleRights()
     EnP_Target = position.getEnP()
     half_move_clock = position.getHMC()
+
+    if isOccupied(board,x2,y2) or piece=='P':
+        half_move_clock = 0
+    else:
+        half_move_clock += 1
+
 
     #Make the move:
     board[y2][x2] = board[y][x]
@@ -357,7 +363,7 @@ def makemove(position,x,y,x2,y2):
     #should be the 'side to move'
     player = 1 - player
     #The half_move_clock should increase by 1.
-    half_move_clock = half_move_clock + 1
+    #half_move_clock = half_move_clock + 1
     
     #Pack it back into one variable:       
     position.setplayer(player)
@@ -416,6 +422,12 @@ def drawBoard():
         order = [listofBlackPieces,listofWhitePieces]
     if isTransition:
         order = list(reversed(order))
+    if isDraw:
+        #Shades
+        for shade in listofShades:
+            img,chess_coord = shade.getInfo()
+            pixel_coord = chess_coord_to_pixels(chess_coord)
+            screen.blit(img,pixel_coord)
     #Pieces
     for piece in order[0]:
         
@@ -426,10 +438,11 @@ def drawBoard():
         else:
             screen.blit(pieces_image,pos,subsection)
     #Shades
-    for shade in listofShades:
-        img,chess_coord = shade.getInfo()
-        pixel_coord = chess_coord_to_pixels(chess_coord)
-        screen.blit(img,pixel_coord)
+    if not isDraw:
+        for shade in listofShades:
+            img,chess_coord = shade.getInfo()
+            pixel_coord = chess_coord_to_pixels(chess_coord)
+            screen.blit(img,pixel_coord)
     #Pieces
     for piece in order[1]:
         chess_coord,subsection,pos = piece.getInfo()
@@ -472,6 +485,15 @@ def createShades(listofTuples):
     global listofShades
     listofShades = []
     if isTransition:
+        #print "I'm transitioning"
+        return
+    if isDraw:
+        coord = lookfor(board,'Kw')[0]
+        shade = Shades(circle_image_yellow,coord)
+        listofShades.append(shade)
+        coord = lookfor(board,'Kb')[0]
+        shade = Shades(circle_image_yellow,coord)
+        listofShades.append(shade)
         return
     for tupleq in listofTuples:
         if isOccupied(board,tupleq[0],tupleq[1]):
@@ -481,6 +503,7 @@ def createShades(listofTuples):
         shade = Shades(img,tupleq)
         listofShades.append(shade)
     if isCheck(position,'white'):
+        print "I;m here dude"
         coord = lookfor(board,'Kw')[0]
         shade = Shades(circle_image_red,coord)
         listofShades.append(shade)
@@ -567,6 +590,13 @@ class GamePosition:
         return self.HMC
     def setHMC(self,HMC):
         self.HMC = HMC
+    def clone(self):
+        clone = GamePosition(copy.deepcopy(self.board),
+                             self.player,
+                             copy.copy(self.castling),
+                             self.EnP,
+                             self.HMC)
+        return clone
 
 #########MAIN FUNCTION####################################################
 #Initialize the board:
@@ -607,6 +637,8 @@ circle_image_green = pygame.image.load('Media\\light_green_circle4.png').convert
 circle_image_capture = pygame.image.load('Media\\light_green_circle11.png').convert_alpha()
 circle_image_red = pygame.image.load('Media\\light_red_circle12.png').convert_alpha()
 greenbox_image = pygame.image.load('Media\\dark_green_box.png').convert_alpha()
+circle_image_yellow = pygame.image.load('Media\\light_yellow_circle.png').convert_alpha()
+
 #Getting sizes:
 #Get background size:
 size_of_bg = background.get_rect().size
@@ -626,6 +658,8 @@ circle_image_red = pygame.transform.scale(circle_image_red,
                                       (square_width, square_height))
 greenbox_image = pygame.transform.scale(greenbox_image,
                                       (square_width, square_height))
+circle_image_yellow = pygame.transform.scale(circle_image_yellow,
+                                             (square_width, square_height))
 #Get final sizes:
 #size_of_pcsImg = pieces_image.get_rect().size
 #size_of_a_piece = (size_of_pcsImg[0]/6,size_of_pcsImg[1]/2)
@@ -649,24 +683,29 @@ isDown = False #Variable that shows if the mouse is being held down
                #onto a piece 
 isClicked = False
 isTransition = False
-movingPiece=0
 isAI = False
+isDraw = False
+chessEnded = False
 #Draw the pieces onto the board:
 drawBoard()
 ######INFINITE LOOP##########################################
 #Allow loop to continue till game ends
+
 gameEnded = False
 while not gameEnded:
     #print isDown
     #Check for user inputs:
     #print isDown
     for event in pygame.event.get():
-        if isTransition:
-            #print 'continuing'
-            continue
+        
         if event.type==QUIT:
             #Window was closed.
             gameEnded = True
+        if chessEnded:
+            continue
+        if isTransition:
+            #print 'continuing'
+            continue
         if not isDown and event.type == MOUSEBUTTONDOWN:
             #Mouse was pressed down.
             #Get the oordinates of the mouse
@@ -714,12 +753,15 @@ while not gameEnded:
                     else:
                         #User clicked elsewhere:
                         if isOccupiedby(board,x2,y2,'wb'[player]):
-                            #User clicked on a square that is our own.
+                            #User clicked on a square that is occupied by their
+                            #own piece
                             isClicked = True
                             prevPos = (x2,y2) #Store it
                         else:
                             isClicked = False
+                            createShades([])#FI this shit
                             isTransition = True #Possibly
+                            
 
             if not (x2,y2) in listofTuples:
                 isTransition = False
@@ -737,6 +779,11 @@ while not gameEnded:
             
             player = position.getplayer()
             HMC = position.getHMC()
+            if HMC>=100:
+                #There is a draw:
+                isDraw = True
+                chessEnded = True
+            ############ADD MORE SHIT HERE LATER########
             dragPiece.setcoord((x2,y2))
             if not isTransition:
                 listofWhitePieces,listofBlackPieces = createPieces(board)
@@ -752,7 +799,7 @@ while not gameEnded:
             
             createShades([])
             #drawText(board)
-    if isTransition and movingPiece!=0:
+    if isTransition:# and movingPiece!=0:
         p,q = movingPiece.getpos()
         dx2,dy2 = destiny
         #print p,dx2,'above'
