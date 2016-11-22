@@ -16,7 +16,13 @@
 #    15/11 16:19       15/11 17:00
 #    16/11 01:00       16/11 01:49
 #    16/11 12:50       16/11 13:31
-#
+#    17/11 21:20       17/11 22:21
+#    18/11 00:15       18/11 01:15
+#    18/11 19:01       19/11 20:20
+#    21/11 00:56       21/11 02:01
+#    21/11 19:36       21/11 20:30
+#    22/11 18:10       22/11 20:02
+#    23/11 01:00       23/11 02:30
 #
 # This program is a chess game. 
 #Note about coordinates:
@@ -27,6 +33,12 @@
 import pygame
 from pygame.locals import *
 import copy
+import json
+import pickle
+import random
+from collections import defaultdict
+from collections import Counter
+import time
 def drawText(board):
     for i in range(len(board)):
         for k in range(len(board[i])):
@@ -44,11 +56,18 @@ def getMouseClick():
     return [x,y]
 
 def isOccupied(board,x,y):
-    if board[y][x] == 0:
+    try:
+        if board[y][x] == 0:
         #The square has nothing on it.
         
-        return False
-    return True
+            return False
+        return True
+    except:
+        print 'woaaah wth!'
+        drawText(board)
+        print y
+        print x
+        raise
 def isOccupiedby(board,x,y,color):
     if board[y][x]==0:
         #the square has nothing on it.
@@ -89,7 +108,7 @@ def findPossibleSquares(position,x,y,AttackSearch=False):
     #a particular x and y coordinate. It will return for the piece on that board
     #a list of possible coordinates it could move to.
     board = position.getboard()
-    #player = position.getplayer()
+    player = position.getplayer()
     castling_rights = position.getCastleRights()
     EnP_Target = position.getEnP()
     #HMC = position.getHMC()
@@ -249,6 +268,7 @@ def findPossibleSquares(position,x,y,AttackSearch=False):
         if not AttackSearch:
             #Kings can potentially castle:
             right = castling_rights[player]
+            #print player
             #Kingside
             if (right and #White has right to castle
             not isOccupied(board,x+1,y) and #The square on its right is empty
@@ -266,14 +286,6 @@ def findPossibleSquares(position,x,y,AttackSearch=False):
             not isAttackedby(position,x-1,y,enemy_color) and #Or the path through which
             not isAttackedby(position,x-2,y,enemy_color)):#it will move
                 listofTuples.append((x-2,y)) #Let castling be an option.
-
-##            refinedlist = []
-##            for tupleq in listofTuples:
-##                px = tupleq[0]
-##                py = tupleq[1]
-##                if not isAttackedby(board,px,py,enemy_color,state_info):
-##                    refinedlist.append(tupleq)
-##            listofTuples = refinedlist
 
     #Make sure the king is not under attack as a result of this move:
     if not AttackSearch:
@@ -389,6 +401,27 @@ def isCheck(position,color):
 
     return isAttackedby(position,x,y,enemy)
 
+def isCheckmate(position,color=-1):
+    #This function tells you if a position is a checkmate. Color is an
+    #optional argument that may be passed to specifically check for mate
+    #against a specific color.
+    if color==-1:
+        return isCheckmate(position,'white') or isCheckmate(position,'b')
+    color = color[0]
+    if isCheck(position,color) and allMoves(position,color)==[]:
+            return True
+    return False
+def isStalemate(position):
+    player = position.getplayer()
+    if player==0:
+        color = 'w'
+    else:
+        color = 'b'
+    if not isCheck(position,color) and allMoves(position,color)==[]:
+        return True
+    return False
+    
+
 def lookfor(board,piece):
     #This function looks for a speecified piece on the board and returns a list of all its
     #coordinates
@@ -422,7 +455,7 @@ def drawBoard():
         order = [listofBlackPieces,listofWhitePieces]
     if isTransition:
         order = list(reversed(order))
-    if isDraw:
+    if isDraw or chessEnded:
         #Shades
         for shade in listofShades:
             img,chess_coord = shade.getInfo()
@@ -438,7 +471,7 @@ def drawBoard():
         else:
             screen.blit(pieces_image,pos,subsection)
     #Shades
-    if not isDraw:
+    if not (isDraw or chessEnded):
         for shade in listofShades:
             img,chess_coord = shade.getInfo()
             pixel_coord = chess_coord_to_pixels(chess_coord)
@@ -495,15 +528,11 @@ def createShades(listofTuples):
         shade = Shades(circle_image_yellow,coord)
         listofShades.append(shade)
         return
-    for tupleq in listofTuples:
-        if isOccupied(board,tupleq[0],tupleq[1]):
-            img = circle_image_capture
-        else:
-            img = circle_image_green
-        shade = Shades(img,tupleq)
+    if chessEnded:
+        coord = lookfor(board,'K'+winner)[0]
+        shade = Shades(circle_image_yellow,coord)
         listofShades.append(shade)
     if isCheck(position,'white'):
-        print "I;m here dude"
         coord = lookfor(board,'Kw')[0]
         shade = Shades(circle_image_red,coord)
         listofShades.append(shade)
@@ -511,7 +540,239 @@ def createShades(listofTuples):
         coord = lookfor(board,'Kb')[0]
         shade = Shades(circle_image_red,coord)
         listofShades.append(shade)
+    #ACTUALLY DRAW
+    for tupleq in listofTuples:
+        if isOccupied(board,tupleq[0],tupleq[1]):
+            img = circle_image_capture
+        else:
+            img = circle_image_green
+        shade = Shades(img,tupleq)
+        listofShades.append(shade)
+    
 
+
+
+def getallpieces(position,color):
+    #This functin returns a list of postions of all the pieces on the
+    #board of a particular color.
+    board = position.getboard()
+    listofpos = []
+    for j in range(8):
+        for i in range(8):
+            if isOccupiedby(board,i,j,color):
+                listofpos.append((i,j))
+    return listofpos
+def allMoves(position, color):
+    if color==1:
+        color = 'white'
+    elif color ==-1:
+        color = 'black'
+    try:
+        color = color[0]
+    except:
+        print color
+        print 'wtffffffff'
+    listofpieces = getallpieces(position,color)
+    #print listofpieces
+    moves = []
+    for pos in listofpieces:
+        try:
+            targets = findPossibleSquares(position,pos[0],pos[1])
+        except:
+            print position.getCastleRights(), 'THESE R DA castling'
+            print position.getplayer()
+        for target in targets:
+             moves.append([pos,target])
+    return moves
+
+def negamax(position,depth,alpha,beta,color,root=True):
+    if root:
+        key = pos2key(position)
+        if key in openings:
+            print 'opening move'
+            return random.choice(openings[key])
+    global xyzw
+    xyzw+=1
+    global searched
+    #print xyzw
+    #print position.getCastleRights()
+    if depth==0:
+        return color*evaluate(position)
+    start = time.clock()
+    moves = allMoves(position, color)
+    if root:
+        bestMove = moves[0]
+        print 'moves',len(moves)
+    end = time.clock()
+    #print 'tkme taken',end-start
+    bestValue = -100000
+    for move in moves:
+        #print 'prev',depth
+        #drawText(board)
+        start = time.clock()
+        newpos = position.clone()
+        end = time.clock()
+        #print 'tkme taken',end-start
+        #if xyzw>20:
+            #print newpos.getCastleRights()
+        makemove(newpos,move[0][0],move[0][1],move[1][0],move[1][1])
+        #newpos.setplayer(1 - newpos.getplayer())
+        #if xyzw>20:
+            #print newpos.getCastleRights()
+        key = pos2key(newpos)
+        if key in searched:
+            #print 'dict used'
+            value = searched[key]
+        else:
+            value = -negamax(newpos,depth-1, -beta,-alpha,-color,False)
+            searched[key] = value
+        #print 'after',depth
+        #drawText(position.getboard())
+        if value>bestValue:
+            bestValue = value
+            #print bestValue
+            if root: 
+                bestMove = move
+        alpha = max(alpha,value)
+        if alpha>=beta:
+            #print 'pruned'
+            break
+    if root:
+        print xyzw
+        searched = {}
+        return bestMove
+        
+    return bestValue
+
+def evaluate(position):
+    #This function evaluates a position based on the point of view of
+    #white.
+    if isCheckmate(position,'white'):
+        Kw = 0
+    else:
+        Kw = 1
+    if isCheckmate(position,'black'):
+        Kb = 0
+    else:
+        Kb = 1
+    board = position.getboard()
+    flatboard = [x for row in board for x in row]
+    c = Counter(flatboard)
+    Qw = c['Qw']
+    Qb = c['Qb']
+    Rw = c['Rw']
+    Rb = c['Rb']
+    Bw = c['Bw']
+    Bb = c['Bb']
+    Nw = c['Nw']
+    Nb = c['Nb']
+    Pw = c['Pw']
+    Pb = c['Pb']
+    #print 'time taken2',end-start
+    start = time.clock()
+    Dw = doubledPawns(board,'white')
+    Db = doubledPawns(board,'black')
+    Sw = blockedPawns(board,'white')
+    Sb = blockedPawns(board,'black')
+    Iw = isolatedPawns(board,'white')
+    Ib = isolatedPawns(board,'black')
+    end = time.clock()
+    #print 'time taken3',end-start
+    start = time.clock()
+    #Mw = len(allMoves(position,'white'))
+    #Mb = len(allMoves(position,'black'))
+    Mw = 0
+    Mb =0
+    #print Kw,Kb,Qw,Qb,Rw,Rb,Bw,Bb,Nw,Nb,Pw,Pb
+    #print'D',Dw,Db,'S',Sw,Sb,'I',Iw,Ib,'M',Mw,Mb
+    end = time.clock()
+    #print 'time taken4',end-start
+    evaluation = 20000*(Kw-Kb) + 900*(Qw - Qb) + 500*(Rw - Rb) +330*(Bw-Bb
+                )+320*(Nw - Nb) +100*(Pw - Pb) +-50*(Dw-Db + Sw-Sb + Iw- Ib
+                ) +10*(Mw - Mb)
+    evaluation2 = pieceSquareTable(flatboard)
+    #print evaluation,evaluation2
+    evaluation = evaluation + evaluation2
+    return evaluation
+
+
+def pieceSquareTable(flatboard):
+    score = 0
+    for i in range(64):
+        if flatboard[i]==0:
+            continue
+        piece = flatboard[i][0]
+        color = flatboard[i][1]
+        sign = +1
+        if color=='b':
+            i = (7-i/8)*8 + i%8
+            sign = -1
+        
+        if piece=='P':
+            score += sign*pawn_table[i]
+        elif piece=='N':
+            score+= sign*knight_table[i]
+        elif piece=='B':
+            score+=sign*bishop_table[i]
+        elif piece=='R':
+            score+=sign*rook_table[i]
+        elif piece=='Q':
+            score+=sign*queen_table[i]
+        elif piece=='K':
+            score+=sign*king_table[i]
+    return score
+
+    
+def doubledPawns(board,color):
+    #This function counts the number of doubled pawns for a player.
+    color = color[0]
+    listofpawns = lookfor(board,'P'+color)
+    repeats = 0
+    temp = []
+    for pawnpos in listofpawns:
+        if pawnpos[0] in temp:
+            repeats = repeats + 1
+        else:
+            temp.append(pawnpos[0])
+    return repeats
+def blockedPawns(board,color):
+    #This function counts the number of blocekd pawns for a player.
+    color = color[0]
+    listofpawns = lookfor(board,'P'+color)
+    blocked = 0
+    for pawnpos in listofpawns:
+        if ((color=='w' and isOccupiedby(board,pawnpos[0],pawnpos[1]-1,
+                                       'black'))
+            or (color=='b' and isOccupiedby(board,pawnpos[0],pawnpos[1]+1,
+                                       'white'))):
+            blocked = blocked + 1
+    return blocked
+def isolatedPawns(board,color):
+    #This function counts the number of isolated pawns for a player.
+    color = color[0]
+    listofpawns = lookfor(board,'P'+color)
+    xlist = [x for (x,y) in listofpawns]
+    isolated = 0
+    for x in xlist:
+        if x!=0 and x!=7:
+            if x-1 not in xlist and x+1 not in xlist:
+                isolated+=1
+        elif x==0 and 1 not in xlist:
+            isolated+=1
+        elif x==7 and 6 not in xlist:
+            isolated+=1
+    return isolated
+        
+def pos2key(position):
+    board = position.getboard()
+    boardTuple = []
+    for row in board:
+        boardTuple.append(tuple(row))
+    boardTuple = tuple(boardTuple)
+
+    key = (boardTuple,position.getplayer(),
+           tuple(position.getCastleRights()))
+    return key
 ##################################
 #Class Definitions:
 class Shades:
@@ -564,12 +825,13 @@ class Piece:
         return self.pieceinfo+'('+str(chess_coord[0])+','+str(chess_coord[1])+')'
 
 class GamePosition:
-    def __init__(self,board,player,castling_rights,EnP_Target,HMC):
+    def __init__(self,board,player,castling_rights,EnP_Target,HMC,history = {}):
         self.board = board
         self.player = player
         self.castling = castling_rights
         self.EnP = EnP_Target
         self.HMC = HMC
+        self.history = history
     def getboard(self):
         return self.board
     def setboard(self,board):
@@ -590,6 +852,11 @@ class GamePosition:
         return self.HMC
     def setHMC(self,HMC):
         self.HMC = HMC
+    def checkRepition(self):
+        return any(v>=3 for v in self.history.itervalues())
+    def addtoHistory(self,position):
+        key = pos2key(position)
+        self.history[key] = self.history.get(key,0) + 1
     def clone(self):
         clone = GamePosition(copy.deepcopy(self.board),
                              self.player,
@@ -609,6 +876,15 @@ board = [ ['Rb', 'Nb', 'Bb', 'Qb', 'Kb', 'Bb', 'Nb', 'Rb'], #8
           ['Pw', 'Pw', 'Pw',  'Pw', 'Pw', 'Pw', 'Pw', 'Pw'], #2
           ['Rw', 'Nw', 'Bw',  'Qw', 'Kw', 'Bw', 'Nw', 'Rw'] ]#1
           # a      b     c     d     e     f     g     h
+##board = [ [  0,    0,    0,    0,    0,    0,    0,    0], #8
+##          [  0,    0,    0,    0,    0,    0,    0,    0], #7
+##          [  0,    'Kb',    0,    0,    0,    0,    0,    0],  #6
+##          [  0,    0,    0,    0,    'Kw',    0,    0,    0],  #5
+##          [  0,    0,    0,    0,    'Qw',    0,    0,    0],  #4
+##          [  0,    0,    0,    0,    0,    0,    0,    0],  #3
+##          [  0,    0,    0,    0,    0,    0,    0,    0], #2
+##          [  0,    0,    0,    0,    0,    0,    0,    0] ]#1
+##          # a      b     c     d     e     f     g     h
 
 #In chess some data must be stored that is not apparent in the board:
 player = 0 #This is the player that makes the next move. 0 is white, 1 is black
@@ -620,6 +896,54 @@ half_move_clock = 0 #This variable stores the number of reversible moves that ha
 
 position = GamePosition(board,player,castling_rights,En_Passant_Target
                         ,half_move_clock)
+pawn_table = [  0,  0,  0,  0,  0,  0,  0,  0,
+50, 50, 50, 50, 50, 50, 50, 50,
+10, 10, 20, 30, 30, 20, 10, 10,
+ 5,  5, 10, 25, 25, 10,  5,  5,
+ 0,  0,  0, 20, 20,  0,  0,  0,
+ 5, -5,-10,  0,  0,-10, -5,  5,
+ 5, 10, 10,-20,-20, 10, 10,  5,
+ 0,  0,  0,  0,  0,  0,  0,  0]
+knight_table = [-50,-40,-30,-30,-30,-30,-40,-50,
+-40,-20,  0,  0,  0,  0,-20,-40,
+-30,  0, 10, 15, 15, 10,  0,-30,
+-30,  5, 15, 20, 20, 15,  5,-30,
+-30,  0, 15, 20, 20, 15,  0,-30,
+-30,  5, 10, 15, 15, 10,  5,-30,
+-40,-20,  0,  5,  5,  0,-20,-40,
+-50,-50,-30,-30,-30,-30,-50,-50]
+bishop_table = [-20,-10,-10,-10,-10,-10,-10,-20,
+-10,  0,  0,  0,  0,  0,  0,-10,
+-10,  0,  5, 10, 10,  5,  0,-10,
+-10,  5,  5, 10, 10,  5,  5,-10,
+-10,  0, 10, 10, 10, 10,  0,-10,
+-10, 10, 10, 10, 10, 10, 10,-10,
+-10,  5,  0,  0,  0,  0,  5,-10,
+-20,-10,-30,-10,-10,-30,-10,-20]
+rook_table = [0,  0,  0,  0,  0,  0,  0,  0,
+  5, 10, 10, 10, 10, 10, 10,  5,
+ -5,  0,  0,  0,  0,  0,  0, -5,
+ -5,  0,  0,  0,  0,  0,  0, -5,
+ -5,  0,  0,  0,  0,  0,  0, -5,
+ -5,  0,  0,  0,  0,  0,  0, -5,
+ -5,  0,  0,  0,  0,  0,  0, -5,
+  0,  0,  0,  5,  5,  0,  0,  0]
+queen_table = [-20,-10,-10, -5, -5,-10,-10,-20,
+-10,  0,  0,  0,  0,  0,  0,-10,
+-10,  0,  5,  5,  5,  5,  0,-10,
+ -5,  0,  5,  5,  5,  5,  0, -5,
+  0,  0,  5,  5,  5,  5,  0, -5,
+-10,  5,  5,  5,  5,  5,  0,-10,
+-10,  0,  5,  0,  0,  0,  0,-10,
+-20,-10,-10, 50, -5,-10,-10,-20]
+king_table = [-30,-40,-40,-50,-50,-40,-40,-30,
+-30,-40,-40,-50,-50,-40,-40,-30,
+-30,-40,-40,-50,-50,-40,-40,-30,
+-30,-40,-40,-50,-50,-40,-40,-30,
+-20,-30,-30,-40,-40,-30,-30,-20,
+-10,-20,-20,-20,-20,-20,-20,-10,
+ 20, 20,  0,  0,  0,  0, 20, 20,
+ 20, 30, 10,  0,  0, 10, 30, 20]
 #state_info = [ player, castling_rights, En_Passant_Target,
                     #half_move_clock] #This variable stores the above data in one variable.
 #Make the GUI:
@@ -633,11 +957,11 @@ screen = pygame.display.set_mode((600,600))
 background = pygame.image.load('Media\\board.png').convert()
 #Load an image with all the pieces on it:
 pieces_image = pygame.image.load('Media\\Chess_Pieces_Sprite.png').convert_alpha()
-circle_image_green = pygame.image.load('Media\\light_green_circle4.png').convert_alpha()
-circle_image_capture = pygame.image.load('Media\\light_green_circle11.png').convert_alpha()
-circle_image_red = pygame.image.load('Media\\light_red_circle12.png').convert_alpha()
-greenbox_image = pygame.image.load('Media\\dark_green_box.png').convert_alpha()
-circle_image_yellow = pygame.image.load('Media\\light_yellow_circle.png').convert_alpha()
+circle_image_green = pygame.image.load('Media\\green_circle_small.png').convert_alpha()
+circle_image_capture = pygame.image.load('Media\\green_circle_neg.png').convert_alpha()
+circle_image_red = pygame.image.load('Media\\red_circle_big.png').convert_alpha()
+greenbox_image = pygame.image.load('Media\\green_box.png').convert_alpha()
+circle_image_yellow = pygame.image.load('Media\\yellow_circle_big.png').convert_alpha()
 
 #Getting sizes:
 #Get background size:
@@ -683,14 +1007,23 @@ isDown = False #Variable that shows if the mouse is being held down
                #onto a piece 
 isClicked = False
 isTransition = False
-isAI = False
+isAI = True
 isDraw = False
 chessEnded = False
+isRecord = False
+openings = defaultdict(list)
+try:
+    file_handle = open('openingTable.txt','r+')
+    openings = pickle.loads(file_handle.read())
+except:
+    file_handle = open('openingTable.txt','w')
+searched = {}
+#print openings
 #Draw the pieces onto the board:
 drawBoard()
 ######INFINITE LOOP##########################################
 #Allow loop to continue till game ends
-
+xyzw=0
 gameEnded = False
 while not gameEnded:
     #print isDown
@@ -701,10 +1034,7 @@ while not gameEnded:
         if event.type==QUIT:
             #Window was closed.
             gameEnded = True
-        if chessEnded:
-            continue
-        if isTransition:
-            #print 'continuing'
+        if chessEnded or isTransition:
             continue
         if not isDown and event.type == MOUSEBUTTONDOWN:
             #Mouse was pressed down.
@@ -769,6 +1099,15 @@ while not gameEnded:
                 #print 'skipped'
                 continue
             
+            if isRecord:
+                key = pos2key(position)
+                print [(x,y),(x2,y2)]
+                print key
+                print openings.get(key,
+                                             [])
+                if [(x,y),(x2,y2)] not in openings[key]: 
+                    openings[key].append([(x,y),(x2,y2)])
+                
             try:
                 makemove(position,x,y,x2,y2)
             except:
@@ -779,10 +1118,30 @@ while not gameEnded:
             
             player = position.getplayer()
             HMC = position.getHMC()
-            if HMC>=100:
+            position.addtoHistory(position)
+            if HMC>=100 or isStalemate(position) or position.checkRepition():
                 #There is a draw:
                 isDraw = True
                 chessEnded = True
+            if isCheckmate(position,'white'):
+                winner = 'b'
+                chessEnded = True
+            if isCheckmate(position,'black'):
+                winner = 'w'
+                chessEnded = True
+            print evaluate(position)
+            if isAI and not chessEnded:
+                if player==0:
+                    color = 1
+                else:
+                    color = -1
+                print player,'playyer'
+                start = time.clock()
+                print negamax(position,3,-1000000,1000000,color)
+                end = time.clock()
+                print 'time for AI', end - start
+            
+                
             ############ADD MORE SHIT HERE LATER########
             dragPiece.setcoord((x2,y2))
             if not isTransition:
@@ -834,4 +1193,9 @@ while not gameEnded:
 
 #Out of loop. Quit pygame:
 pygame.quit()
+if isRecord:
+    file_handle.seek(0)
+    pickle.dump(openings,file_handle)
+    file_handle.truncate()
+    file_handle.close()
 
