@@ -27,7 +27,9 @@
 #    25/11 04:10       25/11 04:50
 #    25/11 13:00       25/11 14:35
 #    25/11 18:35       25/11 19:25
+#    26/11 08:04       26/11 08:31
 #
+
 #Ensure that Pygame is installed
 
 #GUI inspired by:
@@ -90,6 +92,158 @@
 #state of the board. Thus, e4 in algebraic notation would be expressed as (4,4)
 #in this program.
 
+#Import dependencies:
+import pygame #Game library
+from pygame.locals import * #For useful variables
+import copy #Library used to make exact copies of lists.
+import pickle #Library used to store dictionaries in a text file and read them from text files.
+import random #Used for making random selections
+from collections import defaultdict #Used for giving dictionary values default data types.
+from collections import Counter #For counting elements in a list effieciently.
+import threading #To allow for AI to think simultaneously while the GUI is coloring the board.
+
+
+
+########################################################
+#Class Definitions:
+#####################################################
+#There are three classes used in this program:
+# 1. GamePosition - This class stores a chess position. A chess position constitutes several
+# features that specify the state of the game, such as the the player that has to play next,
+# castling rights of the players, number of irreversible moves played so far, the positions of
+# pieces on the board, etc.
+# 2. Shades - This is used for GUI. A shade is a transparent colored image that is displayed on
+# a specific square of the chess board, in order to show various things to the user such as
+# the squares to which a piece may move, the square that is currently selected, etc. The class
+# stores a reference to the image that the instance of the class should display when needed. It
+# also stores the coordinates at which the shade would be applied.
+# 3. Piece - This is also used for GUI. A Piece object stores the information about the image
+# that a piece should display (pawn, queen, etc.) and the coordinate at which it should be
+# displayed on thee chess board.
+##########################################################
+class GamePosition:
+    def __init__(self,board,player,castling_rights,EnP_Target,HMC,history = {}):
+        self.board = board #A 2D array containing information about piece postitions. Check main
+        #function to see an example of such a representation.
+        self.player = player #Stores the side to move. If white to play, equals 0. If black to
+        #play, stores 1.
+        self.castling = castling_rights #A list that contains castling rights for white and
+        #black. Each castling right is a list that contains right to castle kingside and queenside.
+        self.EnP = EnP_Target #Stores the coordinates of a square that can be targeted by en passant capture.
+        self.HMC = HMC #Half move clock. Stores the number of irreversible moves made so far, in order to help
+        #detect draw by 50 moves without any capture or pawn movement.
+        self.history = history #A dictionary that stores as key a position (hashed) and the value of each of
+        #these keys represents the number of times each of these positions was repeated in order for this
+        #position to be reached.
+        
+    def getboard(self):
+        return self.board
+    def setboard(self,board):
+        self.board = board
+    def getplayer(self):
+        return self.player
+    def setplayer(self,player):
+        self.player = player
+    def getCastleRights(self):
+        return self.castling
+    def setCastleRights(self,castling_rights):
+        self.castling = castling_rights
+    def getEnP(self):
+        return self.EnP
+    def setEnP(self, EnP_Target):
+        self.EnP = EnP_Target
+    def getHMC(self):
+        return self.HMC
+    def setHMC(self,HMC):
+        self.HMC = HMC
+    def checkRepition(self):
+        #Returns True if any of of the values in the history dictionary is greater than 3.
+        #This would mean a position had been repeated at least thrice in order to reach the
+        #current position in this game.
+        return any(value>=3 for value in self.history.itervalues())
+    def addtoHistory(self,position):
+        #Generate a unique key out of the current position:
+        key = pos2key(position)
+        #Add it to the history dictionary.
+        self.history[key] = self.history.get(key,0) + 1
+    def gethistory(self):
+        return self.history
+    def clone(self):
+        #This method returns another instance of the current object with exactly the same
+        #parameters but independent of the current object.
+        clone = GamePosition(copy.deepcopy(self.board), #Independent copy
+                             self.player,
+                             copy.deepcopy(self.castling), #Independent copy
+                             self.EnP,
+                             self.HMC)
+        return clone
+class Shades:
+    #Self explanatory:
+    def __init__(self,image,coord):
+        self.image = image
+        self.pos = coord
+    def getInfo(self):
+        return [self.image,self.pos]
+class Piece:
+    def __init__(self,pieceinfo,chess_coord):
+        #pieceinfo is a string such as 'Qb'. The Q represents Queen and b
+        #shows the fact that it is black:
+        piece = pieceinfo[0]
+        color = pieceinfo[1]
+        #Get the information about where the image for this piece is stored
+        #on the overall sprite image with all the pieces. Note that
+        #square_width and square_height represent the size of a square on the
+        #chess board.
+        if piece=='K':
+            index = 0
+        elif piece=='Q':
+            index = 1
+        elif piece=='B':
+            index = 2
+        elif piece == 'N':
+            index = 3
+        elif piece == 'R':
+            index = 4
+        elif piece == 'P':
+            index = 5
+        left_x = square_width*index
+        if color == 'w':
+            left_y = 0
+        else:
+            left_y = square_height
+        
+        self.pieceinfo = pieceinfo
+        #subsection defines the part of the sprite image that represents our
+        #piece:
+        self.subsection = (left_x,left_y,square_width,square_height)
+        #There are two ways that the position of a piece is defined on the
+        #board. The default one used is the chess_coord, which stores something
+        #like (3,2). It represents the chess coordinate where our piece image should
+        #be blitted. On the other hand, is pos does not hold the default value
+        #of (-1,-1), it will hold pixel coordinates such as (420,360) that represents
+        #the location in the window that the piece should be blitted on. This is
+        #useful for example if our piece is transitioning from a square to another:
+        self.chess_coord = chess_coord
+        self.pos = (-1,-1)
+
+    #The methods are self explanatory:
+    def getInfo(self):
+        return [self.chess_coord, self.subsection,self.pos]
+    def setpos(self,pos):
+        self.pos = pos
+    def getpos(self):
+        return self.pos
+    def setcoord(self,coord):
+        self.chess_coord = coord
+    def __repr__(self):
+        #useful for debugging
+        return self.pieceinfo+'('+str(chess_coord[0])+','+str(chess_coord[1])+')'
+
+
+########################################################
+#Function Definitions:
+#####################################################
+
 #The functions in this file may be classified into three main groups:
 # 1. Chess Processing Functions - these are the functions that work with variables
 # that hold the information about gamestate.
@@ -100,18 +254,12 @@
 # computer make decisions in terms of what should be played.
 
 #CHESS PROCESSING FUNCTIONS////////////////////
+# drawText(board) - This function is not called in this program. It is useful for 
 #GUI FUNCTIONS////////////////////////////////
 #AI RELATED FUNCTIONS////////////////////////
-import pygame
-from pygame.locals import *
-import copy
-import json
-import pickle
-import random
-from collections import defaultdict
-from collections import Counter
-import time
-import threading
+
+
+#CHESS PROCESSING FUNCTIONS////////////////////
 def drawText(board):
     for i in range(len(board)):
         for k in range(len(board[i])):
@@ -122,11 +270,8 @@ def drawText(board):
         for k in range(len(board[i])):
             if board[i][k]=='Oo':
                 board[i][k] = 0
-    print "###############################################"
-def getMouseClick():
-    x = input("What's x value?: ")
-    y = input("What's y value?: ")
-    return [x,y]
+#GUI FUNCTIONS////////////////////////////////
+#AI RELATED FUNCTIONS////////////////////////
 
 def isOccupied(board,x,y):
     if board[y][x] == 0:
@@ -330,11 +475,10 @@ def findPossibleSquares(position,x,y,AttackSearch=False):
         if not AttackSearch:
             #Kings can potentially castle:
             right = castling_rights[player]
-            #print player
             #Kingside
             if (right[0] and #has right to castle
-            board[7][y]!=0 and #The rook square is not empty
-            board[7][y][0]=='R' and #There is a rook at the appropriate place
+            board[y][7]!=0 and #The rook square is not empty
+            board[y][7][0]=='R' and #There is a rook at the appropriate place
             not isOccupied(board,x+1,y) and #The square on its right is empty
             not isOccupied(board,x+2,y) and #The second square beyond is also empty
             not isAttackedby(position,x,y,enemy_color) and #The king isn't under atack
@@ -343,8 +487,8 @@ def findPossibleSquares(position,x,y,AttackSearch=False):
                 listofTuples.append((x+2,y))
             #Queenside
             if (right[1] and #has right to castle
-            board[0][y]!=0 and #The rook square is not empty
-            board[0][y][0]=='R' and #The rook square is not empty
+            board[y][0]!=0 and #The rook square is not empty
+            board[y][0][0]=='R' and #The rook square is not empty
             not isOccupied(board,x-1,y)and #The square on its left is empty
             not isOccupied(board,x-2,y)and #The second square beyond is also empty
             not isOccupied(board,x-3,y) and #And the one beyond.
@@ -552,6 +696,10 @@ def drawBoard():
             img,chess_coord = shade.getInfo()
             pixel_coord = chess_coord_to_pixels(chess_coord)
             screen.blit(img,pixel_coord)
+    if prevMove[0]!=-1 and not isTransition:
+        x,y,x2,y2 = prevMove
+        screen.blit(yellowbox_image,chess_coord_to_pixels((x,y)))
+        screen.blit(yellowbox_image,chess_coord_to_pixels((x2,y2)))
     #Pieces
     for piece in order[0]:
         
@@ -582,13 +730,6 @@ def getPiece(chess_coord):
     for piece in listofWhitePieces+listofBlackPieces:
         if piece.getInfo()[0] == chess_coord:
             return piece
-
-def getPiece2(pieceinfo):
-    l = []
-    for piece in listofWhitePieces+listofBlackPieces:
-        if piece.pieceinfo == pieceinfo:
-            l.append(piece)
-    return l
 
 def createPieces(board):
 
@@ -669,34 +810,32 @@ def allMoves(position, color):
              moves.append([pos,target])
     return moves
 
-def negamax(position,depth,alpha,beta,color,bestMoveReturn,root=True):
+def negamax(position,depth,alpha,beta,colorsign,bestMoveReturn,root=True):
     if root:
         key = pos2key(position)
         if key in openings:
-            print 'opening move'
             bestMoveReturn[:] = random.choice(openings[key])
             return
     global searched
     if depth==0:
-        return color*evaluate(position)
-    start = time.clock()
-    moves = allMoves(position, color)
+        return colorsign*evaluate(position)
+    moves = allMoves(position, colorsign)
     if root:
         bestMove = moves[0]
     bestValue = -100000
     for move in moves:
-        start = time.clock()
         newpos = position.clone()
         makemove(newpos,move[0][0],move[0][1],move[1][0],move[1][1])
         key = pos2key(newpos)
         if key in searched:
             value = searched[key]
         else:
-            value = -negamax(newpos,depth-1, -beta,-alpha,-color,[],False)
+            value = -negamax(newpos,depth-1, -beta,-alpha,-colorsign,[],False)
             searched[key] = value
         if value>bestValue:
             bestValue = value
-            if root: 
+            
+            if root:
                 bestMove = move
         alpha = max(alpha,value)
         if alpha>=beta:
@@ -743,15 +882,10 @@ def evaluate(position):
     Sb = blockedPawns(board,'black')
     Iw = isolatedPawns(board,'white')
     Ib = isolatedPawns(board,'black')
-    #print Kw,Kb,Qw,Qb,Rw,Rb,Bw,Bb,Nw,Nb,Pw,Pb
-    #print'D',Dw,Db,'S',Sw,Sb,'I',Iw,Ib,'M',Mw,Mb
-    end = time.clock()
-    #print 'time taken4',end-start
     evaluation = 20000*(Kw-Kb) + 900*(Qw - Qb) + 500*(Rw - Rb) +330*(Bw-Bb
                 )+320*(Nw - Nb) +100*(Pw - Pb) +-30*(Dw-Db + Sw-Sb + Iw- Ib
                 )
     evaluation2 = pieceSquareTable(flatboard,gamephase)
-    #print evaluation,evaluation2
     evaluation = evaluation + evaluation2
     return evaluation
 
@@ -767,7 +901,6 @@ def pieceSquareTable(flatboard,gamephase):
         if color=='b':
             i = (7-i/8)*8 + i%8
             sign = -1
-            
         if piece=='P':
             score += sign*pawn_table[i]
         elif piece=='N':
@@ -837,99 +970,7 @@ def pos2key(position):
     key = (boardTuple,position.getplayer(),
            tuplerights)
     return key
-##################################
-#Class Definitions:
-class Shades:
-    def __init__(self,image,coord):
-        self.image = image
-        self.pos = coord
-    def getInfo(self):
-        return [self.image,self.pos]
-class Piece:
-    def __init__(self,pieceinfo,chess_coord):
-        #global pieces_image
-        #global size_of_a_piece
-        size = (square_width,square_height)
-        color = pieceinfo[1]
-        piece = pieceinfo[0]
-        if piece=='K':
-            left_x = 0
-        else:
-            if piece=='Q':
-                index = 1
-            elif piece=='B':
-                index = 2
-            elif piece == 'N':
-                index = 3
-            elif piece == 'R':
-                index = 4
-            elif piece == 'P':
-                index = 5
-            left_x = size[0]*index
-        if color == 'w':
-            left_y = 0
-        else:
-            left_y = size[1]
-        
-        self.pieceinfo = pieceinfo
-        self.subsection = (left_x,left_y,size[0],size[1])
-        self.chess_coord = chess_coord
-        self.pos = (-1,-1)
 
-    def getInfo(self):
-        return [self.chess_coord, self.subsection,self.pos]
-    def setpos(self,pos):
-        self.pos = pos
-    def getpos(self):
-        return self.pos
-    def setcoord(self,coord):
-        self.chess_coord = coord
-    def __repr__(self):
-        #useful for debugging
-        return self.pieceinfo+'('+str(chess_coord[0])+','+str(chess_coord[1])+')'
-
-class GamePosition:
-    def __init__(self,board,player,castling_rights,EnP_Target,HMC,history = {}):
-        self.board = board
-        self.player = player
-        self.castling = castling_rights
-        self.EnP = EnP_Target
-        self.HMC = HMC
-        self.history = history
-    def getboard(self):
-        return self.board
-    def setboard(self,board):
-        self.board = board
-    def getplayer(self):
-        return self.player
-    def setplayer(self,player):
-        self.player = player
-    def getCastleRights(self):
-        return self.castling
-    def setCastleRights(self,castling_rights):
-        self.castling = castling_rights
-    def getEnP(self):
-        return self.EnP
-    def setEnP(self, EnP_Target):
-        self.EnP = EnP_Target
-    def getHMC(self):
-        return self.HMC
-    def setHMC(self,HMC):
-        self.HMC = HMC
-    def checkRepition(self):
-        return any(v>=3 for v in self.history.itervalues())
-    def addtoHistory(self,position):
-        key = pos2key(position)
-        self.history[key] = self.history.get(key,0) + 1
-    def gethistory(self):
-        return self.history
-    def clone(self):
-        clone = GamePosition(copy.deepcopy(self.board),
-                             self.player,
-                             copy.deepcopy(self.castling),
-                             self.EnP,
-                             self.HMC)
-        return clone
 
 #########MAIN FUNCTION####################################################
 #Initialize the board:
@@ -1029,6 +1070,7 @@ circle_image_red = pygame.image.load('Media\\red_circle_big.png').convert_alpha(
 greenbox_image = pygame.image.load('Media\\green_box.png').convert_alpha()
 circle_image_yellow = pygame.image.load('Media\\yellow_circle_big.png').convert_alpha()
 circle_image_green_big = pygame.image.load('Media\\green_circle_big.png').convert_alpha()
+yellowbox_image = pygame.image.load('Media\\yellow_box.png').convert_alpha()
 #Menu pictures:
 withfriend_pic = pygame.image.load('Media\\withfriend.png').convert_alpha()
 withAI_pic = pygame.image.load('Media\\withAI.png').convert_alpha()
@@ -1036,6 +1078,7 @@ playwhite_pic = pygame.image.load('Media\\playWhite.png').convert_alpha()
 playblack_pic = pygame.image.load('Media\\playBlack.png').convert_alpha()
 flipEnabled_pic = pygame.image.load('Media\\flipEnabled.png').convert_alpha()
 flipDisabled_pic = pygame.image.load('Media\\flipDisabled.png').convert_alpha()
+
 #Getting sizes:
 #Get background size:
 size_of_bg = background.get_rect().size
@@ -1054,6 +1097,8 @@ circle_image_capture = pygame.transform.scale(circle_image_capture,
 circle_image_red = pygame.transform.scale(circle_image_red,
                                       (square_width, square_height))
 greenbox_image = pygame.transform.scale(greenbox_image,
+                                      (square_width, square_height))
+yellowbox_image = pygame.transform.scale(yellowbox_image,
                                       (square_width, square_height))
 circle_image_yellow = pygame.transform.scale(circle_image_yellow,
                                              (square_width, square_height))
@@ -1112,6 +1157,7 @@ isMenu = True
 isAI = -1
 isFlip = -1
 AIPlayer = -1
+prevMove = [-1,-1,-1,-1]
 while not gameEnded:
     if isMenu:
         #Menu Stuff
@@ -1132,13 +1178,11 @@ while not gameEnded:
             drawBoard()
             isMenu = False
             if isAI and AIPlayer==0:
-                color=1
-                print player,'playyer'
+                colorsign=1
                 bestMoveReturn = []
                 move_thread = threading.Thread(target = negamax,
-                            args = (position,3,-1000000,1000000,color,bestMoveReturn))
+                            args = (position,3,-1000000,1000000,colorsign,bestMoveReturn))
                 move_thread.start()
-                start = time.clock()
                 isAIThink = True
             continue
         for event in pygame.event.get():
@@ -1199,7 +1243,7 @@ while not gameEnded:
             gameEnded = True
         
             break
-        if chessEnded or isTransition:
+        if chessEnded or isTransition or isAIThink:
             continue
         
         if not isDown and event.type == MOUSEBUTTONDOWN:
@@ -1234,7 +1278,6 @@ while not gameEnded:
             y2 = chess_coord[1]
             isTransition = False
             if (x,y)==(x2,y2): #NO dragging occured
-                #print 'alpha'
                 if not isClicked: #nothing had been clicked
                     isClicked = True
                     prevPos = (x,y) #Store it so next time we know the origin
@@ -1259,22 +1302,16 @@ while not gameEnded:
 
             if not (x2,y2) in listofTuples:
                 isTransition = False
-                #createShades([])
-                #print 'skipped'
                 continue
             
             if isRecord:
                 key = pos2key(position)
-                print [(x,y),(x2,y2)]
-                print key
-                print openings.get(key,
-                                             [])
                 if [(x,y),(x2,y2)] not in openings[key]: 
                     openings[key].append([(x,y),(x2,y2)])
                 
 
             makemove(position,x,y,x2,y2)
-
+            prevMove = [x,y,x2,y2]
             
             player = position.getplayer()
             HMC = position.getHMC()
@@ -1289,38 +1326,30 @@ while not gameEnded:
             if isCheckmate(position,'black'):
                 winner = 'w'
                 chessEnded = True
-            print evaluate(position)
             if isAI and not chessEnded:
                 if player==0:
-                    color = 1
+                    colorsign = 1
                 else:
-                    color = -1
-                print player,'playyer'
+                    colorsign = -1
                 bestMoveReturn = []
                 move_thread = threading.Thread(target = negamax,
-                            args = (position,3,-1000000,1000000,color,bestMoveReturn))
+                            args = (position,3,-1000000,1000000,colorsign,bestMoveReturn))
                 move_thread.start()
-                start = time.clock()
                 isAIThink = True
-            
-                
-            ############ADD MORE SHIT HERE LATER########
+        
             dragPiece.setcoord((x2,y2))
             if not isTransition:
                 listofWhitePieces,listofBlackPieces = createPieces(board)
             else:
-                #print 'In transition!!'
                 movingPiece = dragPiece
                 origin = chess_coord_to_pixels((x,y))
                 destiny = chess_coord_to_pixels((x2,y2))
                 movingPiece.setpos(origin)
                 step = (destiny[0]-origin[0],destiny[1]-origin[1])
-                #print 'step  = ',step
             
             
             createShades([])
-            #drawText(board)
-    if isTransition:# and movingPiece!=0:
+    if isTransition:
         p,q = movingPiece.getpos()
         dx2,dy2 = destiny
         n= 30.0
@@ -1331,7 +1360,6 @@ while not gameEnded:
             createShades([])
         else:
             movingPiece.setpos((p+step[0]/n,q+step[1]/n))
-        #continue
 
     if isDown:
         #Mouse is held down and a pie
@@ -1343,11 +1371,9 @@ while not gameEnded:
             isAIThink = False
             createShades([])
             ax,ay=0,0
-            #print 'hekki'
             [x,y],[x2,y2] = bestMoveReturn
             makemove(position,x,y,x2,y2)
-            end = time.clock()
-            print end-start,'s'
+            prevMove = [x,y,x2,y2]
             player = position.getplayer()
             HMC = position.getHMC()
             position.addtoHistory(position)
@@ -1361,17 +1387,12 @@ while not gameEnded:
             if isCheckmate(position,'black'):
                 winner = 'w'
                 chessEnded = True
-            print evaluate(position)
-            #dragPiece.setcoord((x2,y2))
-            #print dragPiece.pieceinfo
-            #print x2,y2
             isTransition = True
             movingPiece = getPiece((x,y))
             origin = chess_coord_to_pixels((x,y))
             destiny = chess_coord_to_pixels((x2,y2))
             movingPiece.setpos(origin)
             step = (destiny[0]-origin[0],destiny[1]-origin[1])
-                #print 'step  = ',step
     #Update positions of all images:
     drawBoard()
     #Update the display:
