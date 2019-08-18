@@ -1,4 +1,4 @@
-For the YouTube introduction, see: https://www.youtube.com/watch?v=S1pXtoCKW-U&t=116s
+For the YouTube introduction, see: https://youtu.be/S1pXtoCKW-U
 
 
 Chess program with AI
