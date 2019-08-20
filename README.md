@@ -120,3 +120,7 @@ Normally, algebraic notation is used to specify a box on a chess board. In this
 program, coordinates will be index referecnes to the 2_D array that stores the
 state of the board. Thus, e4 in algebraic notation would be expressed as (4,4)
 in this program.
+
+
+Note: This program was written and run on Python 2 on a Windows computer. While I have recently started trying to improve cross-platform compatability, there seems to be issues sometimes with running A.I. on Mac OS.
+Furthermore, the program was written for a lower-resolution screen. As a result, the transitions may appear slow on a high-resolution screen. This could be changed by changing relevant parameters on the code.
