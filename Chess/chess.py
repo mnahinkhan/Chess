@@ -159,7 +159,7 @@ import random #Used for making random selections
 from collections import defaultdict #Used for giving dictionary values default data types.
 from collections import Counter #For counting elements in a list effieciently.
 import threading #To allow for AI to think simultaneously while the GUI is coloring the board.
-
+import os #To allow path joining with cross-platform support
 
 
 ########################################################
@@ -1321,23 +1321,23 @@ screen = pygame.display.set_mode((600,600))
 
 #Load all the images:
 #Load the background chess board image:
-background = pygame.image.load('Media\\board.png').convert()
+background = pygame.image.load(os.path.join('Media','board.png')).convert()
 #Load an image with all the pieces on it:
-pieces_image = pygame.image.load('Media\\Chess_Pieces_Sprite.png').convert_alpha()
-circle_image_green = pygame.image.load('Media\\green_circle_small.png').convert_alpha()
-circle_image_capture = pygame.image.load('Media\\green_circle_neg.png').convert_alpha()
-circle_image_red = pygame.image.load('Media\\red_circle_big.png').convert_alpha()
-greenbox_image = pygame.image.load('Media\\green_box.png').convert_alpha()
-circle_image_yellow = pygame.image.load('Media\\yellow_circle_big.png').convert_alpha()
-circle_image_green_big = pygame.image.load('Media\\green_circle_big.png').convert_alpha()
-yellowbox_image = pygame.image.load('Media\\yellow_box.png').convert_alpha()
+pieces_image = pygame.image.load(os.path.join('Media','Chess_Pieces_Sprite.png')).convert_alpha()
+circle_image_green = pygame.image.load(os.path.join('Media','green_circle_small.png')).convert_alpha()
+circle_image_capture = pygame.image.load(os.path.join('Media','green_circle_neg.png')).convert_alpha()
+circle_image_red = pygame.image.load(os.path.join('Media','red_circle_big.png')).convert_alpha()
+greenbox_image = pygame.image.load(os.path.join('Media','green_box.png')).convert_alpha()
+circle_image_yellow = pygame.image.load(os.path.join('Media','yellow_circle_big.png')).convert_alpha()
+circle_image_green_big = pygame.image.load(os.path.join('Media','green_circle_big.png')).convert_alpha()
+yellowbox_image = pygame.image.load(os.path.join('Media','yellow_box.png')).convert_alpha()
 #Menu pictures:
-withfriend_pic = pygame.image.load('Media\\withfriend.png').convert_alpha()
-withAI_pic = pygame.image.load('Media\\withAI.png').convert_alpha()
-playwhite_pic = pygame.image.load('Media\\playWhite.png').convert_alpha()
-playblack_pic = pygame.image.load('Media\\playBlack.png').convert_alpha()
-flipEnabled_pic = pygame.image.load('Media\\flipEnabled.png').convert_alpha()
-flipDisabled_pic = pygame.image.load('Media\\flipDisabled.png').convert_alpha()
+withfriend_pic = pygame.image.load(os.path.join('Media','withfriend.png')).convert_alpha()
+withAI_pic = pygame.image.load(os.path.join('Media','withAI.png')).convert_alpha()
+playwhite_pic = pygame.image.load(os.path.join('Media','playWhite.png')).convert_alpha()
+playblack_pic = pygame.image.load(os.path.join('Media','playBlack.png')).convert_alpha()
+flipEnabled_pic = pygame.image.load(os.path.join('Media','flipEnabled.png')).convert_alpha()
+flipDisabled_pic = pygame.image.load(os.path.join('Media','flipDisabled.png')).convert_alpha()
 
 #Getting sizes:
 #Get background size:
