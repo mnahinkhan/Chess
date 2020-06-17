@@ -5,6 +5,8 @@ Chess program with AI
 
 Ensure that Pygame is installed
 
+Make sure you run with Python 2, not 3!
+
 GUI inspired by:
 https://en.lichess.org/
 
